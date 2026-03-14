@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0a0a0f"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="PDF Okuyucu"/>
+  <link rel="manifest" href="./manifest.json"/>
+  <title>PDF Okuyucu</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#0a0a0f; --bg2:#111118; --bg3:#18181f;
+      --accent:#5b8ef0; --accent2:#a78bfa;
+      --text:#f0eee8; --muted:#6b6b80; --border:rgba(255,255,255,0.07);
+      --safe-top:env(safe-area-inset-top); --safe-bot:env(safe-area-inset-bottom);
+      --safe-l:env(safe-area-inset-left); --safe-r:env(safe-area-inset-right);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%;overflow:hidden}
+    body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none}
+
+    /* SPLASH */
+    #splash{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;transition:opacity .5s ease,transform .5s ease}
+    #splash.hidden{opacity:0;pointer-events:none;transform:scale(1.03)}
+    .splash-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+    .splash-orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.15}
+    .orb1{width:500px;height:500px;background:var(--accent);top:-150px;left:-100px;animation:of1 9s ease-in-out infinite}
+    .orb2{width:400px;height:400px;background:var(--accent2);bottom:-100px;right:-80px;animation:of2 7s ease-in-out infinite}
+    .orb3{width:280px;height:280px;background:#38bdf8;top:50%;left:50%;transform:translate(-50%,-50%);animation:of1 11s ease-in-out infinite;opacity:.07}
+    @keyframes of1{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-28px) scale(1.04)}}
+    @keyframes of2{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(22px) scale(.97)}}
+
+    .splash-logo{position:relative;z-index:1;width:90px;height:90px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:44px;margin-bottom:26px;box-shadow:0 0 60px rgba(91,142,240,.35),0 20px 40px rgba(0,0,0,.5);animation:logoIn .8s cubic-bezier(.34,1.56,.64,1) both}
+    @keyframes logoIn{from{opacity:0;transform:scale(.4) rotate(-15deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+    .splash-title{font-family:'Syne',sans-serif;font-size:clamp(30px,6vw,46px);font-weight:800;color:#fff;text-align:center;line-height:1.1;position:relative;z-index:1;animation:ti .6s .2s ease both}
+    .splash-title span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .splash-sub{font-size:14px;color:var(--muted);text-align:center;margin-top:8px;margin-bottom:44px;position:relative;z-index:1;animation:ti .6s .35s ease both;max-width:260px;line-height:1.55}
+    @keyframes ti{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+    .splash-upload{position:relative;z-index:1;width:100%;max-width:340px;border:1.5px dashed rgba(91,142,240,.4);border-radius:18px;padding:32px 20px;text-align:center;cursor:pointer;background:rgba(91,142,240,.04);transition:all .25s ease;animation:ti .6s .5s ease both}
+    .splash-upload:hover,.splash-upload.drag{border-color:var(--accent);background:rgba(91,142,240,.1);transform:translateY(-2px)}
+    .splash-upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+    .uiw{width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,rgba(91,142,240,.2),rgba(167,139,250,.2));display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 12px;border:1px solid rgba(91,142,240,.2)}
+    .ul{font-family:'Syne',sans-serif;font-size:15px;font-weight:600;color:#fff;margin-bottom:5px}
+    .uh{font-size:12px;color:var(--muted)}
+    .uh span{color:var(--accent)}
+
+    /* APP */
+    #app{height:100%;display:flex;flex-direction:column;opacity:0;transition:opacity .4s ease}
+    #app.visible{opacity:1}
+
+    /* TOPBAR */
+    .topbar{height:calc(52px + var(--safe-top));padding:calc(var(--safe-top) + 7px) calc(var(--safe-r) + 10px) 7px calc(var(--safe-l) + 10px);background:rgba(10,10,15,.94);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:50}
+    .tb-back{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+    .tb-back:hover{background:rgba(255,255,255,.1);color:var(--text)}
+    .tb-name{flex:1;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tb-info{font-size:11px;color:var(--muted);flex-shrink:0}
+    .tb-btn{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;font-family:monospace}
+    .tb-btn:hover{background:rgba(91,142,240,.15);color:var(--accent);border-color:rgba(91,142,240,.3)}
+    .tb-btn:active{transform:scale(.9)}
+
+    /* LAYOUT */
+    .reader-layout{flex:1;display:flex;overflow:hidden}
+
+    /* SIDEBAR */
+    .sidebar{width:200px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .3s ease,opacity .3s ease}
+    .sidebar.closed{width:0;opacity:0;pointer-events:none}
+    .sb-header{padding:12px 12px 8px;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0}
+    .thumbs{flex:1;overflow-y:auto;padding:8px 6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;display:flex;flex-direction:column;gap:6px}
+    .thumb-item{border-radius:7px;overflow:hidden;cursor:pointer;border:2px solid transparent;transition:all .2s;position:relative}
+    .thumb-item:hover{border-color:rgba(91,142,240,.4)}
+    .thumb-item.active{border-color:var(--accent)}
+    .thumb-item canvas{width:100%;height:auto;display:block}
+    .thumb-num{position:absolute;bottom:3px;right:4px;font-size:10px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.6);padding:1px 5px;border-radius:4px}
+
+    /* CANVAS */
+    .canvas-area{flex:1;overflow-y:auto;overflow-x:hidden;background:#1c1c24;display:flex;flex-direction:column;align-items:center;padding:16px 10px calc(16px + var(--safe-bot));gap:10px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;scroll-behavior:smooth}
+    .canvas-area::-webkit-scrollbar{width:4px}
+    .canvas-area::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+    .page-wrap{position:relative;flex-shrink:0;border-radius:5px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.7),0 2px 8px rgba(0,0,0,.4)}
+    .page-wrap canvas{display:block}
+    .page-wrap .pn{position:absolute;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,.5);background:rgba(0,0,0,.55);padding:1px 6px;border-radius:4px;pointer-events:none}
+
+    /* BOTTOMBAR */
+    .bottombar{height:calc(54px + var(--safe-bot));padding:0 calc(var(--safe-r) + 10px) var(--safe-bot) calc(var(--safe-l) + 10px);background:rgba(10,10,15,.96);backdrop-filter:blur(16px);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
+    .nav-btn{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+    .nav-btn:active:not(:disabled){transform:scale(.88);background:rgba(91,142,240,.2)}
+    .nav-btn:disabled{opacity:.22;cursor:not-allowed}
+    .page-ind{flex:1;text-align:center;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--text)}
+    .page-ind span{color:var(--muted);font-weight:400;font-size:12px}
+
+    /* LOADING */
+    .load-ov{position:fixed;inset:0;z-index:200;background:rgba(10,10,15,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;backdrop-filter:blur(10px);transition:opacity .3s}
+    .load-ov.hidden{opacity:0;pointer-events:none}
+    .spinner{width:46px;height:46px;border:3px solid rgba(91,142,240,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .load-txt{font-family:'Syne',sans-serif;font-size:13px;color:var(--muted)}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:calc(68px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(14px);background:var(--bg3);border:1px solid var(--border);padding:9px 16px;border-radius:11px;font-size:13px;color:var(--text);z-index:300;opacity:0;transition:all .3s ease;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+    /* INSTALL BTN */
+    .install-btn{display:none;position:fixed;bottom:calc(36px + var(--safe-bot));left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:16px;padding:15px 30px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;cursor:pointer;z-index:2000;align-items:center;gap:10px;box-shadow:0 8px 28px rgba(91,142,240,.45);white-space:nowrap;animation:ti .4s ease both}
+    .install-btn.show{display:flex}
+
+    /* RESPONSIVE */
+    @media(orientation:landscape) and (min-width:768px){
+      .sidebar.closed{width:0}
+      .canvas-area{padding:14px 14px calc(14px + var(--safe-bot))}
+    }
+    @media(orientation:portrait),(max-width:767px){
+      .sidebar{position:absolute;left:0;top:calc(52px + var(--safe-top));bottom:calc(54px + var(--safe-bot));z-index:40;width:0}
+      .sidebar.open{width:200px;opacity:1;pointer-events:all}
+    }
+  </style>
+</head>
+<body>
+
+<div id="splash">
+  <div class="splash-bg">
+    <div class="splash-orb orb1"></div>
+    <div class="splash-orb orb2"></div>
+    <div class="splash-orb orb3"></div>
+  </div>
+  <div class="splash-logo">📄</div>
+  <h1 class="splash-title">PDF <span>Okuyucu</span></h1>
+  <p class="splash-sub">Reklamsız, ücretsiz, hızlı.<br>A homemade PDF reader.</p>
+  <div class="splash-upload" id="dropZone">
+    <input type="file" accept=".pdf,application/pdf" id="fileInput"/>
+    <div class="uiw">📂</div>
+    <div class="ul">PDF Seç veya Sürükle</div>
+    <div class="uh">Sadece <span>.pdf</span> formatı</div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <button class="tb-back" id="btnBack">←</button>
+    <div class="tb-name" id="topFileName">—</div>
+    <div class="tb-info" id="topPageInfo"></div>
+    <button class="tb-btn" id="btnThumb">⊞</button>
+    <button class="tb-btn" id="btnZoomIn">+</button>
+    <button class="tb-btn" id="btnZoomOut">−</button>
+  </div>
+  <div class="reader-layout">
+    <div class="sidebar closed" id="sidebar">
+      <div class="sb-header">Sayfalar</div>
+      <div class="thumbs" id="thumbnails"></div>
+    </div>
+    <div class="canvas-area" id="canvasArea"></div>
+  </div>
+  <div class="bottombar">
+    <button class="nav-btn" id="btnPrev" disabled>‹</button>
+    <div class="page-ind" id="pageInd">— <span>/ —</span></div>
+    <button class="nav-btn" id="btnNext" disabled>›</button>
+  </div>
+</div>
+
+<button class="install-btn" id="installBtn">📲 Uygulamayı Yükle</button>
+
+<div class="load-ov hidden" id="loadOv">
+  <div class="spinner"></div>
+  <div class="load-txt" id="loadTxt">PDF yükleniyor…</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdf=null, curPage=1, scale=1.4, sbOpen=false;
+
+const splash=document.getElementById('splash');
+const app=document.getElementById('app');
+const fileInput=document.getElementById('fileInput');
+const dropZone=document.getElementById('dropZone');
+const canvasArea=document.getElementById('canvasArea');
+const thumbsEl=document.getElementById('thumbnails');
+const sidebar=document.getElementById('sidebar');
+const topFileName=document.getElementById('topFileName');
+const topPageInfo=document.getElementById('topPageInfo');
+const pageInd=document.getElementById('pageInd');
+const btnPrev=document.getElementById('btnPrev');
+const btnNext=document.getElementById('btnNext');
+const btnBack=document.getElementById('btnBack');
+const btnThumb=document.getElementById('btnThumb');
+const btnZoomIn=document.getElementById('btnZoomIn');
+const btnZoomOut=document.getElementById('btnZoomOut');
+const loadOv=document.getElementById('loadOv');
+const loadTxt=document.getElementById('loadTxt');
+const toastEl=document.getElementById('toast');
+
+function initScale(){
+  const w=window.innerWidth, landscape=w>window.innerHeight;
+  if(w>=1200) scale=1.8;
+  else if(w>=768&&landscape) scale=1.4;
+  else if(w>=768) scale=1.5;
+  else scale=Math.min(1.3,(w-24)/595);
+}
+
+let toastTmr;
+function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toastTmr);toastTmr=setTimeout(()=>toastEl.classList.remove('show'),2000)}
+
+function setLoad(show,txt='PDF yükleniyor…'){loadTxt.textContent=txt;loadOv.classList.toggle('hidden',!show)}
+
+async function openPDF(buf,name){
+  setLoad(true);
+  try{
+    initScale();
+    pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    topFileName.textContent=name||'Belge';
+    curPage=1;
+    canvasArea.innerHTML='';
+    thumbsEl.innerHTML='';
+    await buildPages();
+    updateNav();
+    splash.classList.add('hidden');
+    app.classList.add('visible');
+    // auto sidebar on landscape tablet
+    if(window.innerWidth>=768&&window.innerWidth>window.innerHeight){
+      sbOpen=true; sidebar.classList.remove('closed'); sidebar.classList.add('open');
+    }
+  }catch(e){toast('⚠️ PDF açılamadı');console.error(e)}
+  setLoad(false);
+}
+
+async function buildPages(){
+  const total=pdf.numPages;
+  const observer=new IntersectionObserver(entries=>{
+    entries.forEach(async e=>{
+      if(e.isIntersecting){
+        const wrap=e.target, pg=+wrap.dataset.page, cv=wrap.querySelector('canvas');
+        if(!cv.dataset.r) await renderPage(pg,cv);
+        // track current page
+        const all=[...canvasArea.querySelectorAll('.page-wrap')];
+        const vis=all.filter(w=>{const r=w.getBoundingClientRect();return r.top<window.innerHeight*.55&&r.bottom>0});
+        if(vis.length){const p=+vis[0].dataset.page;if(p!==curPage){curPage=p;updateNav()}}
+      }
+    });
+  },{rootMargin:'300px'});
+
+  for(let i=1;i<=total;i++){
+    const wrap=document.createElement('div'); wrap.className='page-wrap'; wrap.dataset.page=i;
+    const cv=document.createElement('canvas');
+    const pn=document.createElement('div'); pn.className='pn'; pn.textContent=i;
+    wrap.appendChild(cv); wrap.appendChild(pn);
+    canvasArea.appendChild(wrap);
+    if(i<=2) await renderPage(i,cv);
+    else{const ph=await getPageH(i);cv.width=Math.floor(595*scale);cv.height=ph;cv.style.background='#22222e'}
+    observer.observe(wrap);
+  }
+  buildThumbs();
+}
+
+async function getPageH(n){const p=await pdf.getPage(n);const vp=p.getViewport({scale});return Math.floor(vp.height)}
+
+async function renderPage(n,cv){
+  if(cv.dataset.r) return;
+  cv.dataset.r='1';
+  const page=await pdf.getPage(n);
+  const vp=page.getViewport({scale});
+  cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
+  cv.style.background=''; cv.style.display='block';
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+}
+
+async function buildThumbs(){
+  const total=pdf.numPages;
+  for(let i=1;i<=total;i++){
+    const item=document.createElement('div'); item.className='thumb-item'+(i===1?' active':''); item.dataset.page=i;
+    const cv=document.createElement('canvas');
+    const nd=document.createElement('div'); nd.className='thumb-num'; nd.textContent=i;
+    item.appendChild(cv); item.appendChild(nd); thumbsEl.appendChild(item);
+    item.addEventListener('click',()=>goTo(i));
+    const pg=await pdf.getPage(i); const vp=pg.getViewport({scale:.22});
+    cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
+    pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  }
+}
+
+function updateNav(){
+  if(!pdf) return;
+  const t=pdf.numPages;
+  pageInd.innerHTML=`${curPage} <span>/ ${t}</span>`;
+  topPageInfo.textContent=`${curPage}/${t}`;
+  btnPrev.disabled=curPage<=1; btnNext.disabled=curPage>=t;
+  thumbsEl.querySelectorAll('.thumb-item').forEach(t=>t.classList.toggle('active',+t.dataset.page===curPage));
+}
+
+function goTo(n){
+  if(!pdf) return;
+  const w=canvasArea.querySelector(`.page-wrap[data-page="${n}"]`);
+  if(w){w.scrollIntoView({behavior:'smooth',block:'start'});curPage=n;updateNav()}
+}
+
+fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f)});
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag')});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)loadFile(f)});
+
+async function loadFile(f){
+  if(f.type!=='application/pdf'&&!f.name.endsWith('.pdf')){toast('Sadece PDF destekleniyor');return}
+  openPDF(await f.arrayBuffer(),f.name);
+}
+
+// File handling API (Android "open with")
+if('launchQueue' in window){
+  window.launchQueue.setConsumer(async lp=>{
+    if(!lp.files.length) return;
+    loadFile(await lp.files[0].getFile());
+  });
+}
+
+btnBack.addEventListener('click',()=>{
+  app.classList.remove('visible');
+  setTimeout(()=>{splash.classList.remove('hidden');canvasArea.innerHTML='';thumbsEl.innerHTML='';pdf=null},200);
+});
+
+btnThumb.addEventListener('click',()=>{
+  sbOpen=!sbOpen;
+  if(window.innerWidth<768){sidebar.classList.toggle('open',sbOpen);sidebar.classList.toggle('closed',!sbOpen)}
+  else{sidebar.classList.toggle('closed',!sbOpen);sidebar.classList.toggle('open',sbOpen)}
+});
+
+btnPrev.addEventListener('click',()=>goTo(curPage-1));
+btnNext.addEventListener('click',()=>goTo(curPage+1));
+
+btnZoomIn.addEventListener('click',()=>{
+  if(scale>=2.6) return; scale=+(scale+.2).toFixed(1);
+  rerender(); toast(`Zoom: ${Math.round(scale*100)}%`);
+});
+btnZoomOut.addEventListener('click',()=>{
+  if(scale<=.5) return; scale=+(scale-.2).toFixed(1);
+  rerender(); toast(`Zoom: ${Math.round(scale*100)}%`);
+});
+
+async function rerender(){
+  if(!pdf) return;
+  canvasArea.querySelectorAll('canvas').forEach(c=>delete c.dataset.r);
+  const wraps=canvasArea.querySelectorAll('.page-wrap');
+  for(const w of wraps){
+    const p=+w.dataset.page;
+    if(Math.abs(p-curPage)<=2) await renderPage(p,w.querySelector('canvas'));
+  }
+}
+
+document.addEventListener('keydown',e=>{
+  if(!pdf) return;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') goTo(curPage+1);
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp') goTo(curPage-1);
+});
+
+let tx=0;
+canvasArea.addEventListener('touchstart',e=>{tx=e.changedTouches[0].screenX},{passive:true});
+canvasArea.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].screenX-tx;
+  if(Math.abs(dx)>55){if(dx<0)goTo(curPage+1);else goTo(curPage-1)}
+});
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+// PWA Install
+const installBtn = document.getElementById('installBtn');
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.classList.add('show');
+});
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const result = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.classList.remove('show');
+  if(result.outcome === 'accepted') toast('✅ Uygulama yüklendi!');
+});
+window.addEventListener('appinstalled', () => {
+  installBtn.classList.remove('show');
+  toast('✅ Ana ekrana eklendi!');
+});
+</script>
+</body>
+</html>
